@@ -34,14 +34,12 @@ struct qcom_dload {
 #define to_qcom_dload(o) container_of(o, struct qcom_dload, kobj)
 
 #define QCOM_DOWNLOAD_BOTHDUMP (QCOM_DOWNLOAD_FULLDUMP | QCOM_DOWNLOAD_MINIDUMP)
-
 #ifndef HMD_RAMDUMP_DISABLE
 static bool enable_dump =
 	IS_ENABLED(CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_DEFAULT);
 #else
 static bool enable_dump = false;
 #endif
-
 static enum qcom_download_mode current_download_mode = QCOM_DOWNLOAD_NODUMP;
 static enum qcom_download_mode dump_mode = QCOM_DOWNLOAD_FULLDUMP;
 

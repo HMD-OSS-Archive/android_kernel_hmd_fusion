@@ -145,7 +145,11 @@ struct gsi_channel_info {
 struct dwc3;
 extern void *dwc_trace_ipc_log_ctxt;
 
+// ontim add for smartpin
 int smartpin_dwc3_msm_set_role(enum usb_role role);
+int smartpin_set_role(enum usb_role role);
+int smartpin_get_role(void);
+// add end
 
 #if IS_ENABLED(CONFIG_USB_DWC3_MSM)
 void dwc3_msm_notify_event(struct dwc3 *dwc,

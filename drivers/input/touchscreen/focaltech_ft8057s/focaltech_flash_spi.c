@@ -52,7 +52,6 @@
 /*****************************************************************************
 * Global variable or extern global variabls/functions
 *****************************************************************************/
-
 extern char touch_version[32];
 
 u8 fw_file[] = {
@@ -93,7 +92,6 @@ struct upgrade_setting_nf upgrade_setting_list[] = {
 };
 
 
-
 void chinoe_get_fw_ver(void)
 {
     u8 fwver = 0;
@@ -110,7 +108,6 @@ void chinoe_get_fw_ver(void)
        msleep(200);
    } while (cnt  < 5);
 }
-
 struct fts_upgrade *fwupgrade;
 
 static int fts_check_bootid(void)
@@ -739,7 +736,6 @@ static int fts_fw_download(const u8 *buf, u32 len, bool need_reset)
 
     fts_esdcheck_switch(upg->ts_data, ENABLE);
     ret = 0;
-
      chinoe_get_fw_ver();
 err_fw_download:
     fts_irq_enable();

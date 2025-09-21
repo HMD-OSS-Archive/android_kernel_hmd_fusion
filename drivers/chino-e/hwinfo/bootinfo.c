@@ -78,12 +78,10 @@ char cam_front_lens_efuse[64] = {0};
 
 char touch_version[32] = "tp unknow";
 EXPORT_SYMBOL(touch_version);
-
 char  panel_name_find[128] = "lcd not found";
 EXPORT_SYMBOL(panel_name_find);
 int gesture_mode = 0;
 EXPORT_SYMBOL(gesture_mode);
-
 //Added by jiangjiang.yang for NHK-540 on 2024-04-07 begin
 char nfc_info[32] = "nfc error";
 EXPORT_SYMBOL(nfc_info);

@@ -99,7 +99,6 @@ static struct fts_gesture_st fts_gesture_data;
 /*****************************************************************************
 * Global variable or extern global variabls/functions
 *****************************************************************************/
-
 extern int gesture_mode;
 //EXPORT_SYMBOL(gesture_mode);
 /*****************************************************************************

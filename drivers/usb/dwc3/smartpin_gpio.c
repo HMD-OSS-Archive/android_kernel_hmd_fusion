@@ -29,9 +29,11 @@ struct smartpin_gpio {
 	struct delayed_work sp_work;
 	int irq_gpio; // gpio27
 	int irq;
+	int irq1;
 	int typec_vbus_det_gpio; // gpio60
 	int sp_vbus_det_gpio; // gpio97
 	struct mutex lock;
+	spinlock_t		lock1;
 };
 
 
@@ -48,6 +50,36 @@ static irqreturn_t smartpin_irq_handler(int irq, void *dev_id)
 	dev_err(sp->dev, "%s ---\n", __func__);
 
 	schedule_delayed_work(&sp->sp_work, msecs_to_jiffies(1000));
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t typec_vbus_irq_handler(int irq, void *dev_id)
+{
+	struct smartpin_gpio *sp = dev_id;
+	int gpio27_val;
+	int gpio60_val;
+	int role;
+
+	spin_lock_irq(&sp->lock1);
+
+	dev_err(sp->dev, "%s ---\n", __func__);
+
+	gpio27_val = gpio_get_value(sp->irq_gpio);
+	pr_err("typec_vbus_irq_handler: gpio27 = %d\n", gpio27_val);
+	gpio60_val = gpio_get_value(sp->typec_vbus_det_gpio);
+	pr_err("typec_vbus_irq_handler: gpio60 = %d\n", gpio60_val);
+
+	role = smartpin_get_role();
+	pr_err("typec_vbus_irq_handler: role = %d\n", role);
+
+	if((gpio27_val == 0) && (gpio60_val == 1)){
+		if(role != 1){
+			smartpin_set_role(USB_ROLE_HOST);
+			pr_err("typec_vbus_irq_handler: smartpin otg online, set role host\n");
+		}
+	}
+	spin_unlock_irq(&sp->lock1);
 
 	return IRQ_HANDLED;
 }
@@ -104,6 +136,7 @@ static int smartpin_probe(struct platform_device *pdev)
 
 	INIT_DELAYED_WORK(&sp->sp_work, smartpin_otg_work);
 	mutex_init(&sp->lock);
+	spin_lock_init(&sp->lock1);
 
 	ret = of_property_read_u32(node, "debounce", &irq_gpio_debounce);
 	if (ret < 0) {
@@ -137,6 +170,30 @@ static int smartpin_probe(struct platform_device *pdev)
 		pr_err("fail to request typec_vbus_det_gpio\n");
 		return -EINVAL;
 	}
+
+	ret = gpio_direction_input(sp->typec_vbus_det_gpio);
+	if (ret < 0) {
+		pr_err("gpio-%d input set fail\n", sp->typec_vbus_det_gpio);
+		return ret;
+	}
+
+	gpio_set_debounce(sp->typec_vbus_det_gpio, irq_gpio_debounce);
+	pr_err("gpio_num<%d>debounce<%d>,\n", sp->typec_vbus_det_gpio, irq_gpio_debounce);
+
+	sp->irq1 =gpio_to_irq(sp->typec_vbus_det_gpio);
+	if (sp->irq1 < 0) {
+		pr_err("fail to gpio to irq1\n");
+		return -EINVAL;
+	}
+
+	ret = devm_request_threaded_irq(sp->dev, sp->irq1, NULL, typec_vbus_irq_handler,
+					IRQF_TRIGGER_RISING | IRQF_ONESHOT, "typec_vbus", sp);
+	if (ret) {
+		pr_err("Request IRQ failed!ERRNO:%d.", ret);
+		return -1;
+	}
+
+	enable_irq_wake(sp->irq1);
 
 	// gpio97
 	sp->sp_vbus_det_gpio = of_get_named_gpio(node, "vbus-det2-gpio", 0);
@@ -182,7 +239,7 @@ static int smartpin_probe(struct platform_device *pdev)
 	gpio97_val = gpio_get_value(sp->sp_vbus_det_gpio);
 	pr_err("smartpin_probe: gpio97 = %d\n", gpio97_val);
 
-	if(gpio27_val == 0)
+	if((gpio27_val == 0) && (gpio60_val == 1))
 		schedule_delayed_work(&sp->sp_work, msecs_to_jiffies(5000));
 
 	return 0;
