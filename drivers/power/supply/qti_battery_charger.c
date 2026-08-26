@@ -62,7 +62,6 @@
 /* NHK-765,config max charge percentage,add */
 #define CHG_SOC_MAX_DELTA			0   /* 0.1% */
 #define CHG_SOC_MAX_DELTA_INTERVAL_MS	3000
-#define CHG_SOC_MAX_DELTA_AWAKE_MS	100
 /* NHK-765,config max charge percentage,end */
 
 enum usb_connector_type {
@@ -128,7 +127,6 @@ enum usb_property_id {
 	USB_SCOPE,
 	USB_CONNECTOR_TYPE,
 	F_ACTIVE,
-	SMARTPIN_VBUS_ON, // houzn add for NHK-6672
 	MAX_SOC_LIMIT_DONE,   /* NHK-765,config max charge percentage,add */
 	MAX_CHG_IBAT_LIMIT,   /* NHK-809,config max icharging */
 	TYPEC_CC_ORIENTATION, /* NHK-491,wei1.li,20240423 */
@@ -337,7 +335,6 @@ static const int usb_prop_map[USB_PROP_MAX] = {
 	[USB_ADAP_TYPE]		= POWER_SUPPLY_PROP_USB_TYPE,
 	[USB_TEMP]		= POWER_SUPPLY_PROP_TEMP,
 	[USB_SCOPE]		= POWER_SUPPLY_PROP_SCOPE,
-	[SMARTPIN_VBUS_ON] = POWER_SUPPLY_PROP_AUTHENTIC,  // houzn add for NHK-6672
 };
 
 static const int wls_prop_map[WLS_PROP_MAX] = {
@@ -1021,10 +1018,8 @@ static void battery_chg_check_status_work(struct work_struct *work)
 	else if (x_soc >= (x_soc_th + CHG_SOC_MAX_DELTA)) {
 		bcdev->chg_soc_max_active = bcdev->chg_soc_max;
 		state_en = true;
-	} else if (u_online && (soc >= bcdev->chg_soc_max_active) && (x_soc < (x_soc_th + CHG_SOC_MAX_DELTA))) {
+	} else if ((soc >= bcdev->chg_soc_max_active) && (x_soc < (x_soc_th + CHG_SOC_MAX_DELTA))) {
 		state_en = false;
-		pm_wakeup_dev_event(bcdev->dev,
-				(CHG_SOC_MAX_DELTA_INTERVAL_MS + CHG_SOC_MAX_DELTA_AWAKE_MS), true);
 		schedule_delayed_work(&bcdev->battery_check_work,
 				msecs_to_jiffies(CHG_SOC_MAX_DELTA_INTERVAL_MS));
 	} else
@@ -1358,9 +1353,6 @@ static int usb_psy_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
 		rc = usb_psy_set_icl(bcdev, prop_id, pval->intval);
 		break;
-	case POWER_SUPPLY_PROP_AUTHENTIC: // houzn add for NHK-6672
-		rc = write_property_id(bcdev, pst, prop_id, pval->intval);
-		break;
 	default:
 		break;
 	}
@@ -1373,7 +1365,6 @@ static int usb_psy_prop_is_writeable(struct power_supply *psy,
 {
 	switch (prop) {
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
-	case POWER_SUPPLY_PROP_AUTHENTIC: // houzn add for NHK-6672
 		return 1;
 	default:
 		break;
@@ -1392,7 +1383,6 @@ static enum power_supply_property usb_props[] = {
 	POWER_SUPPLY_PROP_USB_TYPE,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_SCOPE,
-	POWER_SUPPLY_PROP_AUTHENTIC, // houzn add for NHK-6672
 };
 
 static enum power_supply_usb_type usb_psy_supported_types[] = {
@@ -1435,7 +1425,7 @@ static int __battery_psy_set_charge_current(struct battery_chg_dev *bcdev,
 	if (rc < 0) {
 		pr_err("Failed to set FCC %u, rc=%d\n", fcc_ua, rc);
 	} else {
-		pr_err("Set FCC to %u uA\n", fcc_ua);
+		pr_debug("Set FCC to %u uA\n", fcc_ua);
 		bcdev->last_fcc_ua = fcc_ua;
 	}
 
@@ -1552,7 +1542,6 @@ static int battery_psy_set_prop(struct power_supply *psy,
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
-		pr_err("ontim: be set thermal_level = %d\n", pval->intval);
 		return battery_psy_set_charge_current(bcdev, pval->intval);
 	default:
 		return -EINVAL;
@@ -2299,8 +2288,8 @@ static ssize_t max_soc_limit_store(struct class *c,
 	pr_info("update max capacity limit, soc setting:%d active:%d\n",
 			bcdev->chg_soc_max, bcdev->chg_soc_max_active);
 
-	pm_wakeup_dev_event(bcdev->dev, CHG_SOC_MAX_DELTA_AWAKE_MS, true);
-	schedule_delayed_work(&bcdev->battery_check_work, msecs_to_jiffies(30));
+	cancel_delayed_work_sync(&bcdev->battery_check_work);
+	schedule_delayed_work(&bcdev->battery_check_work, msecs_to_jiffies(1000));
 
 	return count;
 }
@@ -2696,63 +2685,6 @@ static void battery_chg_add_debugfs(struct battery_chg_dev *bcdev)
 static void battery_chg_add_debugfs(struct battery_chg_dev *bcdev) { }
 #endif
 
-/* NHK-4790,config power-off soc limit, start */
-static void battery_update_parse_soc_limit(struct battery_chg_dev *bcdev)
-{
-	struct device_node *of_chosen = NULL;
-	const char *bootargs = NULL;
-	const char *cmd_start = NULL;
-	const char *cmd_end = NULL;
-	char keyword[] = "bat_soc_limit=";
-	char soc_limit_str[64] = {0};
-	int size = 0, cap = 0;
-	int ret = 0;
-
-	of_chosen = of_find_node_by_path("/chosen");
-	if (!of_chosen)
-		of_chosen = of_find_node_by_path("/chosen@0");
-
-	if (of_chosen) {
-		of_property_read_string(of_chosen, "bootargs", &bootargs);
-		if (!bootargs) {
-			pr_err("read cmdline failed!\n");
-			return;
-		}
-
-		cmd_start = strstr(bootargs, keyword);
-		if (cmd_start == NULL) {
-			pr_err("%s not found, return\n", keyword);
-			return;
-		}
-
-		cmd_start += strlen(keyword);
-		cmd_end = strchr(cmd_start, ' ');
-		if (cmd_end == NULL) {
-			pr_err("%s end not found, return\n", keyword);
-			cmd_end = strchr(cmd_start, '\0');
-		}
-		size = cmd_end - cmd_start;
-		if (size <= 0) {
-			pr_err("%s parse size fail, return\n", keyword);
-			return;
-		}
-
-		strncpy(soc_limit_str, cmd_start, size);
-		soc_limit_str[size] = '\0';
-
-		ret = kstrtoint(soc_limit_str, 10, &cap);
-		if(ret) {
-			pr_err("%s parse soc_limit_str fail, return\n", keyword);
-			return;
-		}
-
-		pr_err("oeminfo soc_limit = %d\n", cap);
-		bcdev->chg_soc_max = cap;
-		bcdev->chg_soc_max_active = cap;
-	}
-}
-/* NHK-4790,config power-off soc limit, end */
-
 static int battery_chg_parse_dt(struct battery_chg_dev *bcdev)
 {
 	struct device_node *node = bcdev->dev->of_node;
@@ -2848,9 +2780,6 @@ static int battery_chg_parse_dt(struct battery_chg_dev *bcdev)
 	/* NHK-809,config max icharging, add start */
 	bcdev->chg_ibat_max = pst->prop[BATT_CHG_CTRL_LIM_MAX];
 	/* NHK-809,config max icharging, add end */
-
-	/* NHK-4790 config power-off soc limit*/
-	battery_update_parse_soc_limit(bcdev);
 
 	return 0;
 }

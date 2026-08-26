@@ -17,6 +17,7 @@
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
 #include <linux/soc/qcom/mdt_loader.h>
+// [NHK-618]Add by zhixue.chang for reboot to red screen if check modem is not signed 20240412 begin
 #include <linux/reboot.h>
 #include <linux/of_device.h>
 
@@ -61,6 +62,7 @@ static bool is_bootloader_unlock(void)
 
 	return false;
 }
+// [NHK-618]Add by zhixue.chang for reboot to red screen if check modem is not signed 20240412 end
 
 static bool mdt_phdr_valid(const struct elf32_phdr *phdr)
 {
@@ -163,16 +165,10 @@ void *qcom_mdt_read_metadata(struct device *dev, const struct firmware *fw, cons
 	void *data;
 	int ret;
 
-	if (fw->size < sizeof(struct elf32_hdr)) {
-		dev_err(dev, "Image is too small\n");
-		return ERR_PTR(-EINVAL);
-	}
-
 	ehdr = (struct elf32_hdr *)fw->data;
 	phdrs = (struct elf32_phdr *)(ehdr + 1);
 
-	if (ehdr->e_phnum < 2 || ehdr->e_phoff > fw->size ||
-	    (sizeof(phdrs) * ehdr->e_phnum > fw->size - ehdr->e_phoff))
+	if (ehdr->e_phnum < 2 || ehdr->e_phnum > PN_XNUM)
 		return ERR_PTR(-EINVAL);
 
 	if (phdrs[0].p_type == PT_LOAD)
@@ -312,6 +308,7 @@ static int __qcom_mdt_load(struct device *dev, const struct firmware *fw, const 
 		}
 
 		ret = qcom_scm_pas_init_image(pas_id, metadata_phys);
+		// [NHK-618]Add by zhixue.chang for reboot to red screen if check modem is not signed 20240412 begin
 		if (ret) {
 			dev_err(dev, "%s : invalid firmware metadata\n", fw_name);
 			dev_err(dev, "%s : get_efuse_status: %d\n", __func__, get_efuse_status());
@@ -324,6 +321,7 @@ static int __qcom_mdt_load(struct device *dev, const struct firmware *fw, const 
 			}
 			goto deinit;
 		}
+		// [NHK-618]Add by zhixue.chang for reboot to red screen if check modem is not signed 20240412 end
 	}
 
 	for (i = 0; i < ehdr->e_phnum; i++) {

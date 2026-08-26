@@ -32,7 +32,7 @@ static struct poweroff_reason reasons[] = {
 	{ "dm-verity device corrupted",	0x04 },
 	{ "dm-verity enforcing",	0x05 },
 	{ "keys clear",			0x06 },
-	{ "modem_unsigned",		0x22 },
+	{ "modem_unsigned",		0x22 }, // [TCT-319]Add by zhixue.chang for reboot to red screen if check modem is not signed 20240412
 	{}
 };
 

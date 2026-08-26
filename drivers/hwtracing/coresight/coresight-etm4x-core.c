@@ -31,7 +31,6 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/property.h>
-#include <linux/suspend.h>
 
 #include <asm/barrier.h>
 #include <asm/sections.h>
@@ -2039,24 +2038,6 @@ static int etm4_probe_platform_dev(struct platform_device *pdev)
 	return ret;
 }
 
-
-#ifdef CONFIG_HIBERNATION
-static int etm_freeze(struct device *dev)
-{
-	struct etmv4_drvdata *drvdata = dev_get_drvdata(dev);
-
-	coresight_disable(drvdata->csdev);
-
-	return 0;
-}
-#endif
-
-static const struct dev_pm_ops etm_dev_pm_ops = {
-#ifdef CONFIG_HIBERNATION
-	.freeze  = etm_freeze,
-#endif
-};
-
 static struct amba_cs_uci_id uci_id_etm4[] = {
 	{
 		/*  ETMv4 UCI data */
@@ -2073,7 +2054,7 @@ static void clear_etmdrvdata(void *info)
 	etmdrvdata[cpu] = NULL;
 }
 
-static void etm4_remove_dev(struct etmv4_drvdata *drvdata)
+static void __exit etm4_remove_dev(struct etmv4_drvdata *drvdata)
 {
 	etm_perf_symlink(drvdata->csdev, false);
 	/*
@@ -2095,7 +2076,7 @@ static void etm4_remove_dev(struct etmv4_drvdata *drvdata)
 	coresight_unregister(drvdata->csdev);
 }
 
-static void etm4_remove_amba(struct amba_device *adev)
+static void __exit etm4_remove_amba(struct amba_device *adev)
 {
 	struct etmv4_drvdata *drvdata = dev_get_drvdata(&adev->dev);
 
@@ -2103,7 +2084,7 @@ static void etm4_remove_amba(struct amba_device *adev)
 		etm4_remove_dev(drvdata);
 }
 
-static int etm4_remove_platform_dev(struct platform_device *pdev)
+static int __exit etm4_remove_platform_dev(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct etmv4_drvdata *drvdata = dev_get_drvdata(&pdev->dev);
@@ -2142,7 +2123,6 @@ static struct amba_driver etm4x_amba_driver = {
 		.name   = "coresight-etm4x",
 		.owner  = THIS_MODULE,
 		.suppress_bind_attrs = true,
-		.pm	= &etm_dev_pm_ops,
 	},
 	.probe		= etm4_probe_amba,
 	.remove         = etm4_remove_amba,

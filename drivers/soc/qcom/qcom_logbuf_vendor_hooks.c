@@ -26,14 +26,6 @@ static unsigned int boot_log_buf_size;
 static bool copy_early_boot_log = true;
 static unsigned int off;
 
-// ning.wei@hmd++ begin
-#include <linux/suspend.h>
-#include <linux/timekeeping.h>
-
-static struct notifier_block hmd_pm_notifier_block;
-static bool is_in_sleep = false;
-// ning.wei@hmd++ end
-
 static size_t print_time(u64 ts, char *buf, size_t buf_sz)
 {
 	unsigned long rem_nsec = do_div(ts, 1000000000);
@@ -223,12 +215,6 @@ static void copy_boot_log(void *unused, struct printk_ringbuffer *prb,
 	size_t rem_buf_sz;
 	struct printk_info pinfo;
 
-	// ning.wei@hmd++ begin
-	if (!is_in_sleep) {
-		r->info->ts_nsec = ktime_get_boottime_ns();
-	}
-	// ning.wei@hmd++ end
-
 	tailid = descring.tail_id;
 	headid = descring.head_id;
 
@@ -352,24 +338,6 @@ static void release_boot_log_buf(void)
 	kfree(boot_log_buf);
 }
 
-// ning.wei@hmd++ begin
-static int hmd_log_timestamp_pm_notifier(struct notifier_block *notifier, unsigned long pm_event, void *unused)
-{
-
-	switch (pm_event) {
-		case PM_SUSPEND_PREPARE:
-			is_in_sleep = true;
-			break;
-		case PM_POST_SUSPEND:
-			is_in_sleep = false;
-			break;
-		default:
-			break;
-		}
-	return NOTIFY_DONE;
-}
-// ning.wei@hmd++ end
-
 static int logbuf_vendor_hooks_driver_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -391,11 +359,6 @@ static int logbuf_vendor_hooks_driver_probe(struct platform_device *pdev)
 		unregister_trace_android_vh_logbuf(copy_boot_log, NULL);
 		kfree(boot_log_buf);
 	}
-
-	// ning.wei@hmd++ begin
-	hmd_pm_notifier_block.notifier_call = hmd_log_timestamp_pm_notifier;
-	register_pm_notifier(&hmd_pm_notifier_block);
-	// ning.wei@hmd++ end
 
 	return ret;
 }
